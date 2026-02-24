@@ -1,0 +1,4 @@
+[submodule "spark"]
+	path = spark
+	url = https://github.com/sparkjsdev/spark/
+	branch = v2.0.0-preview

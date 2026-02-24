@@ -1,0 +1,153 @@
+﻿diff --git a/spark/src/SplatMesh.ts b/spark/src/SplatMesh.ts
+index ffe1f03..0ad1476 100644
+--- a/spark/src/SplatMesh.ts
++++ b/spark/src/SplatMesh.ts
+@@ -189,8 +189,8 @@ export class EmptySplatSource implements SplatSource {
+     `),
+   }).outputs.gsplat;
+ 
+-  prepareFetchSplat() {}
+-  dispose() {}
++  prepareFetchSplat() { }
++  dispose() { }
+ 
+   getNumSplats() {
+     return 0;
+@@ -201,7 +201,7 @@ export class EmptySplatSource implements SplatSource {
+   getNumSh() {
+     return 0;
+   }
+-  setMaxSh(maxSh: number) {}
++  setMaxSh(maxSh: number) { }
+ 
+   fetchSplat({ index }: { index: DynoVal<"int"> }): DynoVal<typeof Gsplat> {
+     return this.fetchDyno;
+@@ -299,7 +299,14 @@ export class SplatMesh extends SplatGenerator {
+     } else if (options.paged) {
+       const rootUrl = options.url ?? "";
+       if (options.paged === true) {
+-        this.paged = new PagedSplats({ rootUrl });
++        this.paged = new PagedSplats({
++          rootUrl,
++          fileBytes:
++            options.fileBytes instanceof ArrayBuffer
++              ? new Uint8Array(options.fileBytes)
++              : options.fileBytes,
++          fileType: options.fileType,
++        });
+       } else if (options.paged instanceof PagedSplats) {
+         this.paged = options.paged;
+       } else if (options.paged instanceof SplatPager) {
+@@ -479,6 +486,10 @@ export class SplatMesh extends SplatGenerator {
+       }
+     }
+ 
++    if (this.paged && this.paged.radMetaPromise) {
++      await this.paged.radMetaPromise;
++    }
++
+     if (this.splats) {
+       this.numSplats = this.splats.getNumSplats();
+       this.updateGenerator();
+diff --git a/spark/src/SplatPager.ts b/spark/src/SplatPager.ts
+index 46b9295..918e098 100644
+--- a/spark/src/SplatPager.ts
++++ b/spark/src/SplatPager.ts
+@@ -140,15 +140,10 @@ export class PagedSplats implements SplatSource {
+       throw new Error("Failed to decode RAD header");
+     })().then((metaStart) => {
+       // console.log("RAD meta: ", metaStart.meta);
++      this.numSplats = metaStart.meta.count;
+       return metaStart;
+     });
+ 
+-    this.radMetaPromise.catch((error) => {
+-      console.error(error);
+-      // Allow it to be tried again
+-      // this.radMetaPromise = undefined;
+-    });
+-
+     return this.radMetaPromise;
+   }
+ 
+@@ -323,7 +318,7 @@ export class PagedSplats implements SplatSource {
+     }
+   }
+ 
+-  prepareFetchSplat() {}
++  prepareFetchSplat() { }
+ 
+   getNumSplats(): number {
+     return this.numSplats;
+@@ -558,14 +553,14 @@ export class SplatPager {
+     this.extTexture = new dyno.DynoUsampler2DArray({
+       value: this.extSplats
+         ? this.newUint32ArrayTexture(
+-            new Uint32Array(this.maxPages * 256 * 256 * 4),
+-            256,
+-            256,
+-            this.maxPages,
+-            THREE.RGBAIntegerFormat,
+-            THREE.UnsignedIntType,
+-            "RGBA32UI",
+-          )
++          new Uint32Array(this.maxPages * 256 * 256 * 4),
++          256,
++          256,
++          this.maxPages,
++          THREE.RGBAIntegerFormat,
++          THREE.UnsignedIntType,
++          "RGBA32UI",
++        )
+         : SplatPager.emptyExtTexture,
+     });
+     this.sh1Texture = new dyno.DynoUsampler2DArray({
+@@ -850,9 +845,9 @@ export class SplatPager {
+     if (
+       this.curSh >= 2 &&
+       this.sh2Texture.value ===
+-        (!this.extSplats
+-          ? SplatPager.emptySh2Texture
+-          : SplatPager.emptyExtSh2Texture)
++      (!this.extSplats
++        ? SplatPager.emptySh2Texture
++        : SplatPager.emptyExtSh2Texture)
+     ) {
+       this.sh2Texture.value = this.newUint32ArrayTexture(
+         new Uint32Array(this.maxPages * 256 * 256 * 4),
+diff --git a/spark/src/controls.ts b/spark/src/controls.ts
+index 92a87fa..0e4e22d 100644
+--- a/spark/src/controls.ts
++++ b/spark/src/controls.ts
+@@ -495,10 +495,7 @@ export class PointerControls {
+         // Capture the pointer so events continue to be delivered even if it leaves the canvas.
+         canvas.setPointerCapture(event.pointerId);
+ 
+-        // Check if we pressed both pointers at roughly the same time
+-        this.dualPress =
+-          this.rotating != null &&
+-          timeStamp - this.rotating.timeStamp < DUAL_PRESS_MS;
++        this.dualPress = this.rotating != null;
+       }
+     });
+ 
+@@ -506,18 +503,11 @@ export class PointerControls {
+       if (this.rotating?.pointerId === event.pointerId) {
+         this.rotating = null;
+         canvas.releasePointerCapture(event.pointerId);
+-        if (this.dualPress && this.sliding) {
+-          canvas.releasePointerCapture(this.sliding.pointerId);
+-          this.sliding = null;
+-        }
+       } else if (this.sliding?.pointerId === event.pointerId) {
+         this.sliding = null;
+         canvas.releasePointerCapture(event.pointerId);
+-        if (this.dualPress && this.rotating) {
+-          canvas.releasePointerCapture(this.rotating.pointerId);
+-          this.rotating = null;
+-        }
+       }
++      this.dualPress = false;
+ 
+       const position = this.getPointerPosition(event);
+       const lastUp = this.lastUp;

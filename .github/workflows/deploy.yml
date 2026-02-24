@@ -19,6 +19,7 @@ jobs:
       - name: Install and Build
         run: |
           npm install
+          git apply spark_changes_utf8.diff
           npm run build
 
       - name: Deploy

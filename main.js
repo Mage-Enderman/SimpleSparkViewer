@@ -142,7 +142,8 @@ async function init() {
             currentMesh.dispose();
         }
 
-        currentMesh = loadSplat(scene, currentFileUrl, currentFileName.endsWith('.rad'), currentExtension, currentFileName, generateLod);
+        const isRad = currentFileName.toLowerCase().endsWith('.rad') || currentFileUrl.toLowerCase().includes('.rad');
+        currentMesh = loadSplat(scene, currentFileUrl, isRad, currentExtension, currentFileName, generateLod);
 
         currentMesh.initialized.then(() => {
             document.getElementById('status').innerText = `Status: Loaded ${currentFileName}`;
@@ -323,10 +324,16 @@ async function init() {
         currentFileUrl = passedUrl;
 
         // Clean the URL of any trailing query parameters for cleaner extension and filename parsing
-        const cleanUrl = passedUrl.split('?')[0].split('&')[0];
+        // We use a more robust way to get the path part of the URL
+        let urlPath = passedUrl;
+        try {
+            urlPath = new URL(passedUrl).pathname;
+        } catch (e) {
+            urlPath = passedUrl.split('?')[0].split('#')[0];
+        }
 
-        currentExtension = cleanUrl.split('.').pop().toLowerCase();
-        currentFileName = cleanUrl.substring(cleanUrl.lastIndexOf('/') + 1) || "URL_Mesh";
+        currentExtension = urlPath.split('.').pop().toLowerCase();
+        currentFileName = urlPath.substring(urlPath.lastIndexOf('/') + 1) || "URL_Mesh";
 
         const generateLod = document.getElementById('lod-mesh-cb').checked;
         loadSplatFromUrl(generateLod);
