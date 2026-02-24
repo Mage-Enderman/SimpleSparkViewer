@@ -381,7 +381,7 @@ function animate() {
 
         // Update Splat Count
         if (spark && document.getElementById('splat-count-value')) {
-            const renderedCount = spark.renderedSplatCount || 0;
+            const renderedCount = spark.activeSplats || 0;
             const totalCount = currentMesh ? (currentMesh.numSplats || 0) : 0;
 
             let displayStr = renderedCount.toLocaleString();
