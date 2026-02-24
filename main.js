@@ -373,7 +373,7 @@ function animate() {
         }
 
         if (controls && localFrame && !xrScaleActive && !xrIsPresenting) {
-            controls.update(localFrame);
+            controls.update(localFrame, camera);
         }
         if (xr) {
             xr.updateControllers(camera);
@@ -411,8 +411,9 @@ function detectMobile() {
 
         // Invert orbit for mobile (Touch users often prefer "pulling" the world)
         if (controls && controls.pointerControls) {
-            // Invert both horizontal and vertical rotation
-            controls.pointerControls.lookSpeed = -1.0;
+            // SparkControls defaults reverseRotate to true for mobile.
+            // Setting it to false provides the "pulling the world" inversion the user wants.
+            controls.pointerControls.reverseRotate = false;
         }
     }
 }
