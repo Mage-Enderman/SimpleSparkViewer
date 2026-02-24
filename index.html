@@ -3,7 +3,8 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>SparkJS 2 Gaussian Splat Viewer</title>
     <style>
         body {
@@ -12,6 +13,9 @@
             overflow: hidden;
             font-family: 'Inter', sans-serif;
             color: white;
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
         }
 
         #ui-container {
@@ -112,6 +116,10 @@
                 </div>
                 <div style="margin-top: 10px; font-size: 0.85em; color: #ccc;">
                     <b>Keys:</b> WASD (Move) | E/Q (Up/Down) | R/F (Tilt Camera)
+                </div>
+                <div id="splat-count-display"
+                    style="margin-top: 10px; font-size: 0.85em; color: #00ffaa; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px;">
+                    Rendered Splats: <span id="splat-count-value">0</span>
                 </div>
             </div>
         </div>

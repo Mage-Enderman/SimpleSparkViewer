@@ -379,10 +379,44 @@ function animate() {
             xr.updateControllers(camera);
         }
 
+        // Update Splat Count
+        if (spark && document.getElementById('splat-count-value')) {
+            const renderedCount = spark.renderedSplatCount || 0;
+            const totalCount = currentMesh ? (currentMesh.numSplats || 0) : 0;
+
+            let displayStr = renderedCount.toLocaleString();
+            if (totalCount > 0) {
+                displayStr += ` / ${totalCount.toLocaleString()}`;
+            }
+
+            document.getElementById('splat-count-value').innerText = displayStr;
+        }
+
         // SparkViewpoint and sorting are handled internally by SparkRenderer
-        // when correctly parented and configured with the renderer animation loop.
         renderer.render(scene, camera);
     });
 }
 
-init();
+function detectMobile() {
+    const isMobile = (navigator.maxTouchPoints > 0) || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (isMobile) {
+        console.log("Mobile device detected. Optimizing defaults...");
+
+        // Default to lower LOD quality on mobile for performance
+        if (spark) {
+            spark.lodSplatScale = 0.5;
+            document.getElementById('global-lod-slider').value = 0.5;
+            document.getElementById('global-lod-value').innerText = "0.5";
+        }
+
+        // Invert orbit for mobile (Touch users often prefer "pulling" the world)
+        if (controls && controls.pointerControls) {
+            // Invert both horizontal and vertical rotation
+            controls.pointerControls.lookSpeed = -1.0;
+        }
+    }
+}
+
+init().then(() => {
+    detectMobile();
+});
