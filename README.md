@@ -9,7 +9,8 @@ A fast, lightweight, and incredibly responsive Web-based 3D Gaussian Splat viewe
 *   **Real-time UI Overlays**: Tweak your Global LOD Quality, Mesh Detail bounds, and Model Scale in real-time. Includes a built-in FPS monitor for performance tuning.
 *   **First-Person Flycam**: A togglable "First Person Mode" that converts the default Three.js Orbit Controls into a classic WASD flycam. Use the mouse scroll wheel to natively push back and forward along your view ray.
 *   **Instant Auto-Loading**: Pre-configure and instantly boot the viewer into any environment via URL queries.
-    *   Example: `https://<your-username>.github.io/SimpleSparkViewer/?splat=https://domain.com/splat.spz&lodgen=true&flip=false`
+    *   Example: `https://<your-username>.github.io/SimpleSparkViewer/?splat=https://domain.com/splat.spz&lodgen=true&flip=true`
+    *   Parameters: ?splat=url &lodgen=true|false &flip=true|false &loddetail=<number>, and &lodquality=<number>
 
 ## Local Development
 To run this application locally on your machine:
