@@ -38,3 +38,6 @@ spark/.wasm-pack-lock
 puppeteer-test.js
 test-sog.js
 test-sog2.js
+
+# Data
+ExampleRAD/

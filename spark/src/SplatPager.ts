@@ -140,13 +140,8 @@ export class PagedSplats implements SplatSource {
       throw new Error("Failed to decode RAD header");
     })().then((metaStart) => {
       // console.log("RAD meta: ", metaStart.meta);
+      this.numSplats = metaStart.meta.count;
       return metaStart;
-    });
-
-    this.radMetaPromise.catch((error) => {
-      console.error(error);
-      // Allow it to be tried again
-      // this.radMetaPromise = undefined;
     });
 
     return this.radMetaPromise;
@@ -323,7 +318,7 @@ export class PagedSplats implements SplatSource {
     }
   }
 
-  prepareFetchSplat() {}
+  prepareFetchSplat() { }
 
   getNumSplats(): number {
     return this.numSplats;
@@ -558,14 +553,14 @@ export class SplatPager {
     this.extTexture = new dyno.DynoUsampler2DArray({
       value: this.extSplats
         ? this.newUint32ArrayTexture(
-            new Uint32Array(this.maxPages * 256 * 256 * 4),
-            256,
-            256,
-            this.maxPages,
-            THREE.RGBAIntegerFormat,
-            THREE.UnsignedIntType,
-            "RGBA32UI",
-          )
+          new Uint32Array(this.maxPages * 256 * 256 * 4),
+          256,
+          256,
+          this.maxPages,
+          THREE.RGBAIntegerFormat,
+          THREE.UnsignedIntType,
+          "RGBA32UI",
+        )
         : SplatPager.emptyExtTexture,
     });
     this.sh1Texture = new dyno.DynoUsampler2DArray({
@@ -850,9 +845,9 @@ export class SplatPager {
     if (
       this.curSh >= 2 &&
       this.sh2Texture.value ===
-        (!this.extSplats
-          ? SplatPager.emptySh2Texture
-          : SplatPager.emptyExtSh2Texture)
+      (!this.extSplats
+        ? SplatPager.emptySh2Texture
+        : SplatPager.emptyExtSh2Texture)
     ) {
       this.sh2Texture.value = this.newUint32ArrayTexture(
         new Uint32Array(this.maxPages * 256 * 256 * 4),

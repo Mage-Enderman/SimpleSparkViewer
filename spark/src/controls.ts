@@ -495,10 +495,7 @@ export class PointerControls {
         // Capture the pointer so events continue to be delivered even if it leaves the canvas.
         canvas.setPointerCapture(event.pointerId);
 
-        // Check if we pressed both pointers at roughly the same time
-        this.dualPress =
-          this.rotating != null &&
-          timeStamp - this.rotating.timeStamp < DUAL_PRESS_MS;
+        this.dualPress = this.rotating != null;
       }
     });
 
@@ -506,18 +503,11 @@ export class PointerControls {
       if (this.rotating?.pointerId === event.pointerId) {
         this.rotating = null;
         canvas.releasePointerCapture(event.pointerId);
-        if (this.dualPress && this.sliding) {
-          canvas.releasePointerCapture(this.sliding.pointerId);
-          this.sliding = null;
-        }
       } else if (this.sliding?.pointerId === event.pointerId) {
         this.sliding = null;
         canvas.releasePointerCapture(event.pointerId);
-        if (this.dualPress && this.rotating) {
-          canvas.releasePointerCapture(this.rotating.pointerId);
-          this.rotating = null;
-        }
       }
+      this.dualPress = false;
 
       const position = this.getPointerPosition(event);
       const lastUp = this.lastUp;

@@ -189,8 +189,8 @@ export class EmptySplatSource implements SplatSource {
     `),
   }).outputs.gsplat;
 
-  prepareFetchSplat() {}
-  dispose() {}
+  prepareFetchSplat() { }
+  dispose() { }
 
   getNumSplats() {
     return 0;
@@ -201,7 +201,7 @@ export class EmptySplatSource implements SplatSource {
   getNumSh() {
     return 0;
   }
-  setMaxSh(maxSh: number) {}
+  setMaxSh(maxSh: number) { }
 
   fetchSplat({ index }: { index: DynoVal<"int"> }): DynoVal<typeof Gsplat> {
     return this.fetchDyno;
@@ -299,7 +299,14 @@ export class SplatMesh extends SplatGenerator {
     } else if (options.paged) {
       const rootUrl = options.url ?? "";
       if (options.paged === true) {
-        this.paged = new PagedSplats({ rootUrl });
+        this.paged = new PagedSplats({
+          rootUrl,
+          fileBytes:
+            options.fileBytes instanceof ArrayBuffer
+              ? new Uint8Array(options.fileBytes)
+              : options.fileBytes,
+          fileType: options.fileType,
+        });
       } else if (options.paged instanceof PagedSplats) {
         this.paged = options.paged;
       } else if (options.paged instanceof SplatPager) {
@@ -477,6 +484,10 @@ export class SplatMesh extends SplatGenerator {
         await this.extSplats.initialized;
         this.splats = this.extSplats;
       }
+    }
+
+    if (this.paged && this.paged.radMetaPromise) {
+      await this.paged.radMetaPromise;
     }
 
     if (this.splats) {
