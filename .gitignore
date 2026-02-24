@@ -32,7 +32,6 @@ yarn-error.log*
 spark/node_modules/
 spark/rust/target/
 spark/rust/pkg/
-spark/dist/
 spark/.wasm-pack-lock
 
 # Test Scripts
