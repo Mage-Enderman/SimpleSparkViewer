@@ -443,7 +443,7 @@ export class PointerControls {
     this.rotateInertia = rotateInertia ?? DEFAULT_ROTATE_INERTIA;
     this.pointerRollScale = pointerRollScale ?? DEFAULT_POINTER_ROLL_SCALE;
 
-    this.doublePress = doublePress ?? (() => {});
+    this.doublePress = doublePress ?? (() => { });
     this.doublePressLimitMs = DOUBLE_PRESS_LIMIT_MS;
     this.doublePressDistance = DOUBLE_PRESS_DISTANCE;
     this.lastUp = null;
@@ -573,39 +573,32 @@ export class PointerControls {
     }
 
     if (this.dualPress && this.rotating && this.sliding) {
-      // We pressed both pointers at the same time, either pinching or sliding
+      // Simultaneous pan and zoom for 2-finger interaction
       const motion = [
         this.rotating.position.clone().sub(this.rotating.last),
         this.sliding.position.clone().sub(this.sliding.last),
       ];
-      const coincidence = motion[0].dot(motion[1]);
 
-      if (coincidence >= 0.2) {
-        // Similar directions so slide the camera on the XY plane
-        const totalMotion = motion[0].clone().add(motion[1]);
-        const slide = new THREE.Vector3(totalMotion.x, -totalMotion.y, 0);
-        slide.multiplyScalar(this.slideSpeed * (this.reverseSwipe ? 1 : -1));
-        slide.applyQuaternion(control.quaternion);
-        control.position.add(slide);
-        this.moveVelocity = slide.clone().multiplyScalar(1 / deltaTime);
-      } else if (coincidence <= -0.2) {
-        // Opposite directions so either pinch or roll motion
-        const deltaDir = this.sliding.last.clone().sub(this.rotating.last);
-        const deltaDist = deltaDir.length();
-        deltaDir.multiplyScalar(1 / deltaDist).normalize();
+      // 1. Calculate Panning (Midpoint Shift)
+      // Average the motion of both fingers to find the world-translate vector
+      const avgMotion = motion[0].clone().add(motion[1]).multiplyScalar(0.5);
+      const slide = new THREE.Vector3(avgMotion.x, -avgMotion.y, 0);
+      slide.multiplyScalar(this.slideSpeed * (this.reverseSwipe ? 1 : -1));
+      slide.applyQuaternion(control.quaternion);
+      control.position.add(slide);
 
-        const orthoDir = new THREE.Vector2(-deltaDir.y, deltaDir.x);
-        const motionDir = [motion[0].dot(deltaDir), motion[1].dot(deltaDir)];
-        const motionOrtho = [motion[0].dot(orthoDir), motion[1].dot(orthoDir)];
+      // 2. Calculate Zooming (Pinch Distance Delta)
+      const lastDist = this.rotating.last.distanceTo(this.sliding.last);
+      const currentDist = this.rotating.position.distanceTo(this.sliding.position);
 
-        // Pinching motion
-        const midpoint = this.rotating.last
-          .clone()
-          .add(this.sliding.last)
-          .multiplyScalar(0.5);
+      if (lastDist > 0) {
+        const zoomDelta = currentDist - lastDist;
+
+        // Find midpoint in NDC to cast a ray for direction
+        const midpoint = this.rotating.last.clone().add(this.sliding.last).multiplyScalar(0.5);
         let midpointDir = new THREE.Vector3();
-        const theCamera =
-          camera ?? (control instanceof THREE.Camera ? control : undefined);
+        const theCamera = camera ?? (control instanceof THREE.Camera ? control : undefined);
+
         if (theCamera) {
           const ndcMidpoint = new THREE.Vector2(
             (midpoint.x / this.canvas.clientWidth) * 2 - 1,
@@ -615,28 +608,14 @@ export class PointerControls {
           raycaster.setFromCamera(ndcMidpoint, theCamera);
           midpointDir = raycaster.ray.direction;
         }
-        const pinchOut = motionDir[1] - motionDir[0];
-        const slide = midpointDir.multiplyScalar(pinchOut * this.slideSpeed);
-        control.position.add(slide);
-        this.moveVelocity = slide.clone().multiplyScalar(1 / deltaTime);
 
-        // Rolling motion
-        // Calculate angle of orthogonal motion change over distance deltaDist/2
-        // motionOrtho[0] and 1 are already in float distance
-        const angles = [
-          Math.atan(motionOrtho[0] / (-0.5 * deltaDist)),
-          Math.atan(motionOrtho[1] / (0.5 * deltaDist)),
-        ];
-        const rotate = 0.5 * (angles[0] + angles[1]) * this.pointerRollScale;
-        const eulers = new THREE.Euler().setFromQuaternion(
-          control.quaternion,
-          "YXZ",
-        );
-        eulers.z = Math.max(
-          -Math.PI,
-          Math.min(Math.PI, eulers.z + 0.5 * rotate),
-        );
-        control.quaternion.setFromEuler(eulers);
+        const zoomMove = midpointDir.multiplyScalar(zoomDelta * this.slideSpeed);
+        control.position.add(zoomMove);
+
+        // Update movement velocity for inertia (using combined vector)
+        this.moveVelocity = slide.add(zoomMove).multiplyScalar(1 / deltaTime);
+      } else {
+        this.moveVelocity = slide.multiplyScalar(1 / deltaTime);
       }
 
       this.rotating.last.copy(this.rotating.position);
