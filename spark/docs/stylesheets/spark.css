@@ -1,0 +1,191 @@
+@font-face {
+  font-family: "Inter";
+  src: url(https://fonts.googleapis.com/css2?family=Cinzel:wght@400..900&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Limelight&display=swap);
+}
+
+:root {
+  --color-dark: white;
+  --color-light: black;
+  --md-primary-fg-color: #d43e4c;
+  --md-accent-fg-color: #cb6065;
+  --md-text-font: "Inter";
+}
+
+.md-typeset .md-button.md-button--primary {
+  background-color: --md-primary-fg-color;
+  border-color: --md-primary-fg-color;
+  color: white;
+  padding: 0.75em 2em;
+  font-size: 1rem;
+  border-radius: .75rem;
+}
+
+.md-button.md-button--primary:hover {
+  opacity: 1.0;
+  text-decoration: none;
+}
+
+.md-header__button.md-logo {
+  color: white;
+  padding: 0;
+  margin: 0;
+  margin-bottom: 0.4rem;
+}
+
+.md-header__button.md-logo img {
+  height: 1.8rem;
+}
+
+.md-search__form {
+  border-radius: 5px;
+}
+
+.icon-discord {
+  width: 30px;
+  height: 30px;
+}
+
+.icon-github {
+  width: 25px;
+  height: 25px;
+}
+
+.icon-github path,
+.icon-discord path {
+  fill: white;
+}
+
+.md-logo {
+  height: 40px;
+}
+
+.md-logo:hover {
+  text-decoration: none;
+  opacity: 1.0;
+}
+
+.md-header {
+  padding: 20px;
+  padding-top: 15px;
+  padding-bottom: 15px;
+}
+
+.md-header__inner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.md-header__links {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.md-nav {
+  line-height: 2;
+}
+
+.md-nav__link {
+  margin-top: 0;
+}
+
+.md-nav__link:hover,
+.md-nav__link:focus {
+  text-decoration: underline;
+}
+
+.md-header__option {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.md-search {
+  display: flex;
+  align-items: center;
+}
+
+.md-header__topic {
+  display: flex;
+  gap: 1.25rem;
+  align-items: center;
+}
+
+.md-custom-header,
+.md-header__title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 18px;
+}
+
+.md-custom-header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-left: 20px;
+  margin-right: 20px;
+}
+
+.md-custom-header-right .md-nav__link:hover {
+  color: white;
+}
+
+.feature-list {
+  font-size: 1rem;
+  margin: auto;
+  margin-bottom: 30px;
+  max-width: 600px;
+}
+
+@media screen and (max-width: 30em) {
+  .md-header {
+    padding-inline: 10px;
+  }
+  .md-header__button {
+    padding: 0.2rem;
+  }
+}
+
+@media screen and (max-width: 60em) {
+  .feature-list {
+    font-size: 0.8rem;
+  }
+
+  .md-custom-header-right {
+    gap: 0.5rem;
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  .icon-discord {
+    width: 25px;
+    height: 25px;
+  }
+
+  .icon-github {
+    width: 20px;
+    height: 20px;
+  }
+
+  .md-header__button {
+    margin-left: 0;
+  }
+
+  [dir=ltr] .md-header__title {
+    margin-left: 0;
+    margin-right: 0;
+  }
+}
+
+
+header .header__menu-toggle {
+  color: inherit;
+  display: none;
+}
+@media screen and (max-width: 76.234375em) {
+  header .header__menu-toggle {
+    display: inline;
+  }
+}

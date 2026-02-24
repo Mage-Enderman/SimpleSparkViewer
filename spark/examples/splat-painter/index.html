@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spark • Splat Painter</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      width: 100%;
+      background-color: black;
+    }
+    #canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      outline: none; /* Remove default focus outline */
+      touch-action: none;
+    }
+    #mode-overlay {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-family: sans-serif;
+      font-size: 16px;
+      font-weight: bold;
+      z-index: 1000;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+    }
+    #mode-overlay.show {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas" tabindex="0"></canvas>
+  <div id="mode-overlay"></div>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "/examples/js/vendor/three/build/three.module.js",
+        "three/addons/": "/examples/js/vendor/three/examples/jsm/",
+        "lil-gui": "/examples/js/vendor/lil-gui/dist/lil-gui.esm.js",
+        "@sparkjsdev/spark": "/dist/spark.module.js"
+      }
+    }
+  </script>
+  <script type="module">
+    import {
+      dyno,
+      SparkRenderer,
+      SplatMesh,
+      RgbaArray,
+      SparkControls,
+    } from "@sparkjsdev/spark";
+    import * as THREE from "three";
+    import { getAssetFileURL } from "/examples/js/get-asset-url.js";
+    import { GUI } from "lil-gui";
+
+
+    const PARAMETERS = {
+      controlsEnabled: true,
+      eraseEnabled: dyno.dynoBool(false),
+      brushEnabled: dyno.dynoBool(false),
+      brushDepth: dyno.dynoFloat(10.0),
+      brushRadius: dyno.dynoFloat(0.05),
+      brushOrigin: dyno.dynoVec3(new THREE.Vector3(0.0, 0.0, 0.0)),
+      brushDirection: dyno.dynoVec3(new THREE.Vector3(0.0, 0.0, 0.0)),
+      brushColorHex: "#ff00ff",
+      brushColor: dyno.dynoVec3(new THREE.Vector3(1.0, 0.0, 1.0)),
+    };
+
+    const MIN_BRUSH_RADIUS = 0.01;
+    const MAX_BRUSH_RADIUS = 0.25;
+    const MIN_BRUSH_DEPTH = 0.1;
+    const MAX_BRUSH_DEPTH = 100.0;
+
+    const assetID = "painted-bedroom.spz";
+    let currentSplatMesh = null;
+
+    function brushDyno(
+        brushEnabled,
+        eraseEnabled,
+        brushRadius,
+        brushDepth,
+        brushOrigin,
+        brushDirection,
+        brushColor,
+    ) {
+        return dyno.dynoBlock({ gsplat: dyno.Gsplat }, { gsplat: dyno.Gsplat }, ({ gsplat }) => {
+            if (!gsplat) {
+            throw new Error("No gsplat input");
+            }
+            let { center, rgb, opacity } = dyno.splitGsplat(gsplat).outputs;
+            const projectionAmplitude = dyno.dot(brushDirection, dyno.sub(center, brushOrigin));
+            const projectedCenter = dyno.add(brushOrigin, dyno.mul(brushDirection, projectionAmplitude));
+            const distance = dyno.length(dyno.sub(projectedCenter, center)); // distance from projected center to actual center
+            const isInside = dyno.and(dyno.lessThan(distance, brushRadius), 
+                                      dyno.and(dyno.greaterThan(projectionAmplitude, dyno.dynoFloat(0.0)),
+                                      dyno.lessThan(projectionAmplitude, brushDepth)));
+            const newRgb = dyno.select(brushEnabled, dyno.select(isInside, brushColor, rgb), rgb);
+            const newOpacity = dyno.select(eraseEnabled, dyno.select(isInside, dyno.dynoFloat(0.0), opacity), opacity);
+            gsplat = dyno.combineGsplat({ gsplat, rgb: newRgb, opacity: newOpacity });
+            return { gsplat };
+        });
+    }
+
+    function paintableSplatMesh(
+      url,
+      brushEnabled,
+      eraseEnabled,
+      brushRadius,
+      brushDepth,
+      brushOrigin,
+      brushDirection,
+      brushColor,
+    ) {
+      const splatMesh = new SplatMesh({
+        url: url,
+        onFrame: ({ mesh, time }) => {
+          mesh.needsUpdate = true;
+        },
+        onLoad: () => {
+          splatMesh.worldModifier = brushDyno(
+            brushEnabled,
+            eraseEnabled,
+            brushRadius, 
+            brushDepth,
+            brushOrigin, 
+            brushDirection, 
+            brushColor,
+          );
+          splatMesh.splatRgba = new RgbaArray().fromPackedSplats({
+            packedSplats: splatMesh.packedSplats,
+            base: 0,
+            count: splatMesh.packedSplats.numSplats,
+            renderer,
+          });
+          splatMesh.updateGenerator();
+        },
+      });
+      return splatMesh;
+    }
+
+    const canvas = document.getElementById("canvas");
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
+    renderer.setClearColor(new THREE.Color(0xaaffff), 1);
+
+    const scene = new THREE.Scene();
+    const spark = new SparkRenderer({ renderer });
+    scene.add(spark);
+    const controls = new SparkControls({
+      canvas: renderer.domElement,
+    });
+
+    const camera = new THREE.PerspectiveCamera(
+      50,
+      window.innerWidth / window.innerHeight,
+      0.01,
+      1000,
+    );
+    camera.position.set(0, 0, 0);
+    camera.lookAt(0, 0, -1);
+    scene.add(camera);
+
+    function handleResize() {
+      const width = canvas.clientWidth;
+      const height = canvas.clientHeight;
+      renderer.setSize(width, height, false);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+    }
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+
+    async function loadSplatFromFile(url) {
+      if (currentSplatMesh) {
+        scene.remove(currentSplatMesh);
+      }      
+      currentSplatMesh = await paintableSplatMesh(
+        url,
+        PARAMETERS.brushEnabled,
+        PARAMETERS.eraseEnabled,
+        PARAMETERS.brushRadius, 
+        PARAMETERS.brushDepth,
+        PARAMETERS.brushOrigin, 
+        PARAMETERS.brushDirection, 
+        PARAMETERS.brushColor
+      );
+      currentSplatMesh.quaternion.set(1, 0, 0, 0);
+      scene.add(currentSplatMesh);
+      
+    }
+
+    await loadSplatFromFile(await getAssetFileURL(assetID));
+
+    const raycaster = new THREE.Raycaster();
+    let isDragging = false;
+    
+    // Mode overlay functionality
+    const modeOverlay = document.getElementById('mode-overlay');
+    let overlayTimeout;
+    
+    function showModeOverlay(text) {
+      modeOverlay.textContent = text;
+      modeOverlay.classList.add('show');
+      
+      // Clear any existing timeout
+      if (overlayTimeout) {
+        clearTimeout(overlayTimeout);
+      }
+      
+      // Hide overlay after 2 seconds
+      overlayTimeout = setTimeout(() => {
+        modeOverlay.classList.remove('show');
+      }, 2000);
+    }
+
+    function updateRgba() {
+      if (currentSplatMesh) {
+        const newRgba = new RgbaArray();
+        newRgba.render({
+          renderer,
+          count: currentSplatMesh.packedSplats.numSplats,
+          reader: dyno.dynoBlock({ index: "int" }, { rgba8: "vec4" }, ({ index }) => {
+            const { gsplat } = currentSplatMesh.generator.apply({ index });
+            const { rgba } = dyno.splitGsplat(gsplat).outputs;
+            return { rgba8: rgba };
+          }),
+        });
+
+        currentSplatMesh.splatRgba.dispose();
+        currentSplatMesh.splatRgba = newRgba;
+        currentSplatMesh.updateGenerator();
+      }
+    }
+
+    renderer.domElement.addEventListener('pointermove', (event) => {
+        const clickCoords = new THREE.Vector2(
+          (event.clientX / renderer.domElement.width) * 2 - 1,
+          -(event.clientY / renderer.domElement.height) * 2 + 1,
+        );
+        raycaster.setFromCamera(clickCoords, camera);
+        const direction = raycaster.ray.direction.normalize();
+        PARAMETERS.brushDirection.value.x = direction.x;
+        PARAMETERS.brushDirection.value.y = direction.y;
+        PARAMETERS.brushDirection.value.z = direction.z;
+        PARAMETERS.brushOrigin.value.x = raycaster.ray.origin.x;
+        PARAMETERS.brushOrigin.value.y = raycaster.ray.origin.y;
+        PARAMETERS.brushOrigin.value.z = raycaster.ray.origin.z;
+
+        // Apply painting effect while dragging
+        if (isDragging) {
+          updateRgba();
+        }
+      });
+    
+    renderer.domElement.addEventListener('pointerdown', (event) => {
+      isDragging = true;
+      updateRgba();
+    });
+    
+    renderer.domElement.addEventListener('pointerup', (event) => {
+      isDragging = false;
+    });
+    
+    renderer.domElement.addEventListener('pointerleave', (event) => {
+      isDragging = false;
+    });
+
+    const gui = new GUI();
+    
+    // Instructions section
+    const instructions = {
+      brush: "Brush Mode",
+      erase: "Erase Mode", 
+      none: "View Mode",
+      increase: "Increase Brush Size",
+      decrease: "Decrease Brush Size",
+      increaseDepth: "Increase Brush Depth",
+      decreaseDepth: "Decrease Brush Depth"
+    };
+    const instructionsFolder = gui.addFolder("Instructions");
+    instructionsFolder.add(instructions, "brush").name("1:").disable();
+    instructionsFolder.add(instructions, "erase").name("2:").disable();
+    instructionsFolder.add(instructions, "none").name("Esc:").disable();
+    instructionsFolder.add(instructions, "increase").name("=:").disable();
+    instructionsFolder.add(instructions, "decrease").name("-:").disable();
+    instructionsFolder.add(instructions, "increaseDepth").name("]:").disable();
+    instructionsFolder.add(instructions, "decreaseDepth").name("[:").disable();
+    instructionsFolder.open();
+    const brushRadiusController = gui.add(PARAMETERS.brushRadius, "value", MIN_BRUSH_RADIUS, MAX_BRUSH_RADIUS, 0.01).name("Brush Radius");
+    const brushDepthController = gui.add(PARAMETERS.brushDepth, "value", MIN_BRUSH_DEPTH, MAX_BRUSH_DEPTH, 0.1).name("Brush Depth");
+    gui.addColor(PARAMETERS, "brushColorHex").name("Brush Color").onChange((value) => {
+      PARAMETERS.brushColor.value = new THREE.Color(value).convertLinearToSRGB();
+      console.log(PARAMETERS.brushColor.value);
+    });
+
+        // Keyboard controls
+    window.addEventListener('keydown', (event) => {
+    if (event.key === '1') {
+      // Brush mode
+      PARAMETERS.brushEnabled.value = true;
+      PARAMETERS.eraseEnabled.value = false;
+      PARAMETERS.controlsEnabled = false;
+      controls.enabled = false;
+      showModeOverlay('Paint Mode');
+    } else if (event.key === '2') {
+      // Eraser mode
+      PARAMETERS.brushEnabled.value = false;
+      PARAMETERS.eraseEnabled.value = true;
+      PARAMETERS.controlsEnabled = false;
+      controls.enabled = false;
+      showModeOverlay('Erase Mode');
+      } else if (event.key === 'Escape') {
+        // View mode
+        PARAMETERS.brushEnabled.value = false;
+        PARAMETERS.eraseEnabled.value = false;
+        PARAMETERS.controlsEnabled = true;
+        controls.enabled = true;
+        showModeOverlay('View Mode');
+      } else if (event.key === '=' || event.key === '+') {
+        // Increase brush radius
+        const currentRadius = PARAMETERS.brushRadius.value;
+        const newRadius = Math.min(currentRadius + 0.01, MAX_BRUSH_RADIUS);
+        PARAMETERS.brushRadius.value = newRadius;
+        brushRadiusController.updateDisplay();
+      } else if (event.key === '-' || event.key === '_') {
+        // Decrease brush radius
+        const currentRadius = PARAMETERS.brushRadius.value;
+        const newRadius = Math.max(currentRadius - 0.01, MIN_BRUSH_RADIUS);
+        PARAMETERS.brushRadius.value = newRadius;
+        brushRadiusController.updateDisplay();
+      } else if (event.key === ']') {
+        // Increase brush depth
+        const currentDepth = PARAMETERS.brushDepth.value;
+        const newDepth = Math.min(currentDepth + 0.5, MAX_BRUSH_DEPTH);
+        PARAMETERS.brushDepth.value = newDepth;
+        brushDepthController.updateDisplay();
+      } else if (event.key === '[') {
+        // Decrease brush depth
+        const currentDepth = PARAMETERS.brushDepth.value;
+        const newDepth = Math.max(currentDepth - 0.5, MIN_BRUSH_DEPTH);
+        PARAMETERS.brushDepth.value = newDepth;
+        brushDepthController.updateDisplay();
+      }
+    });
+
+    console.log("Starting render loop");
+
+    // Animation loop
+    renderer.setAnimationLoop(() => {
+      if (PARAMETERS.controlsEnabled) {
+        controls.update(camera);
+      }
+      renderer.render(scene, camera);      
+    });
+  </script>
+</body>
+</html>

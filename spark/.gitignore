@@ -1,0 +1,10 @@
+*.DS_Store
+examples/assets
+examples/js/vendor
+examples/showcase/assets
+docs/CNAME
+node_modules/
+site/
+site-repo/
+*.zip
+*.gltf

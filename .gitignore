@@ -1,0 +1,8 @@
+node_modules/
+dist/
+TestSplat/
+test-sog.js
+test-sog2.js
+puppeteer-test.js
+.env
+.DS_Store

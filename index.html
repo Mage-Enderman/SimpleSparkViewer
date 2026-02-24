@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SparkJS 2 Gaussian Splat Viewer</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #000;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            color: white;
+        }
+
+        #ui-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .btn {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+
+        #vr-button-container {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="fps-counter"
+        style="position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.7); color: #0f0; padding: 5px 10px; border-radius: 5px; font-family: monospace; font-size: 1.2em; z-index: 1001; pointer-events: none;">
+        FPS: --
+    </div>
+
+    <div id="ui-container" style="display: flex; flex-direction: column; align-items: flex-start;">
+        <button class="btn" id="toggle-ui-btn"
+            style="margin-bottom: 10px; font-size: 0.8em; padding: 5px 10px; background: rgba(50,50,50,0.8); border: 1px solid #555;">➖
+            Minimize UI</button>
+
+        <div id="ui-content-wrapper">
+            <h2 style="margin-top: 0; margin-bottom: 15px; font-size: 1.4em;">SparkJS 2 Viewer</h2>
+            <input type="file" id="file-input" accept=".spz,.rad,.ply,.sog" style="display: none;">
+            <button class="btn" id="load-btn">Load Splat (.spz / .rad / .ply / .sog)</button>
+            <div id="status">Status: Initializing...</div>
+
+            <div id="controls-panel"
+                style="background: rgba(0,0,0,0.5); padding: 15px; border-radius: 8px; margin-top: 10px; border: 1px solid rgba(255, 255, 255, 0.2);">
+                <div style="margin-bottom: 10px;">
+                    <label style="cursor: pointer; display: block; margin-bottom: 5px;">
+                        <input type="checkbox" id="flip-mesh-cb" checked> Flip Model
+                    </label>
+                    <label style="cursor: pointer; display: block; margin-bottom: 5px;">
+                        <input type="checkbox" id="fps-mode-cb"> First Person Mode
+                    </label>
+                    <label style="cursor: pointer; display: block;">
+                        <input type="checkbox" id="lod-mesh-cb" checked> Generate LODs
+                    </label>
+                </div>
+
+                <hr style="border-top: 1px solid rgba(255, 255, 255, 0.2); margin: 10px 0;">
+
+                <div style="margin-bottom: 10px;">
+                    <label for="global-lod-slider" style="display: block; margin-bottom: 5px; font-size: 0.9em;">Global
+                        LOD Quality: <span id="global-lod-value">1.0</span>x</label>
+                    <input type="range" id="global-lod-slider" min="0.1" max="5" step="0.1" value="1"
+                        style="width: 100%; cursor: pointer;">
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <label for="mesh-lod-slider" style="display: block; margin-bottom: 5px; font-size: 0.9em;">Mesh LOD
+                        Detail: <span id="mesh-lod-value">1.0</span>x</label>
+                    <input type="range" id="mesh-lod-slider" min="0.1" max="5" step="0.1" value="1"
+                        style="width: 100%; cursor: pointer;">
+                </div>
+
+                <hr style="border-top: 1px solid rgba(255, 255, 255, 0.2); margin: 10px 0;">
+
+                <div style="margin-bottom: 10px;">
+                    <label for="scale-slider" style="display: block; margin-bottom: 5px;">Model Scale: <span
+                            id="scale-value">1.0</span>x</label>
+                    <input type="range" id="scale-slider" min="0.1" max="10" step="0.1" value="1"
+                        style="width: 100%; cursor: pointer;">
+                </div>
+                <div>
+                    <label for="orbit-slider" style="display: block; margin-bottom: 5px;">Camera Orbit Offset: <span
+                            id="orbit-value">3.0</span>m</label>
+                    <input type="range" id="orbit-slider" min="0" max="20" step="0.1" value="3"
+                        style="width: 100%; cursor: pointer;">
+                </div>
+                <div style="margin-top: 10px; font-size: 0.85em; color: #ccc;">
+                    <b>Keys:</b> WASD (Move) | E/Q (Up/Down) | R/F (Tilt Camera)
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="vr-button-container"></div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.180.0/three.module.js"
+        }
+    }
+    </script>
+    <script type="module" src="main.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spark • Multiple Viewpoints</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <header>
+    <input type="range" min="-100" max="100" id="camera1">
+    <input type="range" min="-100" max="100" id="camera2">
+  </header>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "/examples/js/vendor/three/build/three.module.js",
+        "three/addons/": "/examples/js/vendor/three/examples/jsm/",
+        "@sparkjsdev/spark": "/dist/spark.module.js"
+      }
+    }
+  </script>
+  <script type="module">
+    import * as THREE from "three";
+    import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
+
+    import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+    import { getAssetFileURL } from "/examples/js/get-asset-url.js";
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000000);
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer();
+    const header_height = document.querySelector('header').getBoundingClientRect().height;
+    renderer.setSize(window.innerWidth, window.innerHeight - header_height);
+    document.body.appendChild(renderer.domElement);
+
+    window.addEventListener('resize', onWindowResize, false);
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // Create the main SparkRenderer for the main canvas and add to the scene
+    const spark = new SparkRenderer({ renderer });
+    scene.add(spark);
+
+    const splatURL = await getAssetFileURL("butterfly.spz");
+    const butterfly = new SplatMesh({ url: splatURL });
+    butterfly.quaternion.set(1, 0, 0, 0);
+    butterfly.position.set(0, 0, -3);
+    scene.add(butterfly);
+
+    async function createViewpoint(origin, screenPos, index) {
+      // Create a textured rectangle at the near plane to show the viewpoint
+      const width = 320;
+      const height = 240;
+      const screen = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.5 * camera.near, 0.5 * camera.near * height / width),
+        new THREE.MeshBasicMaterial({ map: new THREE.Texture() }),
+      );
+      screen.position.set(screenPos.x, screenPos.y, -1).multiplyScalar(camera.near);
+      scene.add(screen);
+
+      const viewCamera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+      viewCamera.position.copy(origin);
+      viewCamera.lookAt(butterfly.position);
+
+      // Load arrow object to show where each camera is
+      const arrowURL = await getAssetFileURL("arrow.glb");
+      new GLTFLoader().load(arrowURL, gltf => {
+        // Different material for each camera
+        const arrowMaterial = new THREE.MeshMatcapMaterial({
+          matcap: [
+            new THREE.TextureLoader().load("https://raw.githubusercontent.com/nidorx/matcaps/master/128/1A2461_3D70DB_2C3C8F_2C6CAC-128px.png"),
+            new THREE.TextureLoader().load("https://raw.githubusercontent.com/nidorx/matcaps/master/128/9D282A_38191D_DFC6CD_D6495A-128px.png")
+          ][index]
+        });
+
+        const arrow = gltf.scene.children[0];
+        arrow.material = arrowMaterial;
+        arrow.position.copy(viewCamera.position);
+        arrow.lookAt(butterfly.position);
+        scene.add(arrow);
+
+        // Connect slider to both camera and arrow
+        document.getElementById("camera" + (index + 1)).oninput = ev => {
+          viewCamera.position.x = (ev.target.value / 100);
+          arrow.position.x = viewCamera.position.x;
+          arrow.lookAt(butterfly.position);
+        };
+      });
+
+      // Spawn a new renderer that by default auto-updates its sort order,
+      // double buffered in case the texture is used recursively in the scene
+      const viewRenderer = new SparkRenderer({
+        renderer,
+        target: { width, height, doubleBuffer: true },
+      });
+      return {
+        update: () => {
+          // Render the viewpoint to a texture and update the view screen
+          viewRenderer.renderTarget({ scene, camera: viewCamera });
+          screen.material.map = viewRenderer.target.texture;
+        },
+      };
+    }
+
+    const viewpoints = [
+      await createViewpoint(new THREE.Vector3(0, 1.5, -3), new THREE.Vector2(-0.5, 0.5), 0),
+      await createViewpoint(new THREE.Vector3(0.5, -1, -3), new THREE.Vector2(0.5, -0.5), 1),
+    ];
+
+    let lastTime;
+    renderer.setAnimationLoop(function animate(time) {
+      const deltaTime = time - (lastTime || time);
+      lastTime = time;
+      scene.background.set(0x000000);
+      renderer.render(scene, camera);
+      butterfly.rotation.y += deltaTime / 2500;
+
+      // Render each viewpoint (with a different background each)
+      for (let i = 0; i < viewpoints.length; i++) {
+        scene.background.set([0x202040, 0x302020][i]);
+        viewpoints[i].update();
+      }
+    });
+  </script>
+</body>
+
+</html>

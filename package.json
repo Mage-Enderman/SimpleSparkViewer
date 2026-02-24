@@ -1,0 +1,18 @@
+{
+  "name": "sparkjs2-viewer",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@sparkjsdev/spark": "file:./spark",
+    "playwright": "^1.58.2",
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}

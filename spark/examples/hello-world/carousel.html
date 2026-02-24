@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+
+<head>
+  <meta charset="utf-8">
+  <title>Spark • Carousel</title>
+  <style>
+    body {
+      margin: 0;
+    }
+  </style>
+</head>
+
+<body>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "/examples/js/vendor/three/build/three.module.js",
+        "three/addons/": "/examples/js/vendor/three/examples/jsm/",
+        "@sparkjsdev/spark": "/dist/spark.module.js"
+      }
+    }
+  </script>
+  <script type="module">
+    import * as THREE from "three";
+    import { SplatMesh } from "@sparkjsdev/spark";
+    import { getAssetFileURL } from "/examples/js/get-asset-url.js";
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer();
+    renderer.setClearColor(0x000000, 1);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Setup mouse controls to orbit the camera around
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 0, -3);
+    controls.minDistance = 2;
+    controls.maxDistance = 3;
+    controls.enablePan = false;
+    controls.enabled = true;
+    controls.update();
+
+    const ASSETS = [
+      { file: "butterfly.spz", scale: 1.2 },
+      { file: "furry-logo-pedestal.spz", scale: 0.45 },
+      { file: "forge.spz", scale: 1 },
+    ];
+    const assets = [];
+
+    for (let asset of ASSETS) {
+      const splatURL = await getAssetFileURL(asset.file);
+      const splat = new SplatMesh({ url: splatURL });
+      splat.quaternion.set(1, 0, 0, 0);
+      splat.position.set(0, 0, -3);
+      splat.scale.setScalar(asset.scale);
+      assets.push(splat);
+    }
+
+    let current = 0;
+    scene.add(assets[current]);
+
+    const FADE_TIME = 1000; //ms
+    let fadeOut = null;
+    let fadeIn = null;
+
+    let prevTime;
+
+    renderer.setAnimationLoop(function animate(time) {
+      const dt = time - (prevTime ?? time);
+      prevTime = time;
+
+      renderer.render(scene, camera);
+      assets[current].rotation.y = time / 1500;
+      controls.update();
+
+      // fade out
+      if (fadeOut !== null) {
+        fadeOut += dt;
+
+        if (fadeOut < FADE_TIME) {
+          assets[current].opacity = 1 - easeInOutSine(fadeOut / FADE_TIME);
+        } else {
+          fadeOut = null;
+          fadeIn = 0;
+          scene.remove(assets[current]);
+          current = (current + 1) % assets.length;
+          scene.add(assets[current]);
+        }
+      }
+
+      // fade in
+      if (fadeIn !== null) {
+        fadeIn += dt;
+        if (fadeIn < FADE_TIME) {
+          assets[current].opacity = easeInOutSine(fadeIn / FADE_TIME);
+        } else {
+          fadeIn = null;
+        }
+      }
+
+    });
+
+    // start fadeout every x seconds
+    setInterval(() => { fadeOut = 0 }, 5000);
+
+    function easeInOutSine(x) {
+      return -(Math.cos(Math.PI * x) - 1) / 2;
+    }
+  </script>
+</body>
+
+</html>
