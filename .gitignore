@@ -1,8 +1,41 @@
+# Dependencies
 node_modules/
-dist/
-TestSplat/
+.pnp
+.pnp.js
+
+# Testing
+/coverage
+/.nyc_output
+
+# Production
+/dist
+
+# Misc
+.DS_Store
+*.pem
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*.DS_Store
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Spark Library Internals
+spark/node_modules/
+spark/rust/target/
+spark/rust/pkg/
+spark/dist/
+spark/.wasm-pack-lock
+
+# Test Scripts
+puppeteer-test.js
 test-sog.js
 test-sog2.js
-puppeteer-test.js
-.env
-.DS_Store
