@@ -19,7 +19,9 @@ export function loadSplat(scene, url, isPaged = false, extension = '', fileName 
 
     let parsedFileType = extension.replace('.', '').toLowerCase();
     if (parsedFileType === 'sog') {
-        parsedFileType = 'pcsogszip';
+        parsedFileType = 'sogs';
+    } else if (parsedFileType === 'splat') {
+        parsedFileType = 'antisplat';
     }
 
     // 2. Native LOD & Memory Paging
