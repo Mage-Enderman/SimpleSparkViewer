@@ -20,3 +20,6 @@ To run this application locally on your machine:
 
 ## Deployment
 This project is configured out-of-the-box to deploy to **GitHub Pages**. Simply push your changes to your `main` branch, and GitHub Actions will automatically handle the build and deployment process. Ensure that GitHub Pages is enabled in your repository's **Settings > Pages** and set the source to `GitHub Actions`.
+
+## Credits
+This project is based on [Spark](https://github.com/sparkjsdev/spark) by sparkjsdev, used under the MIT License.
