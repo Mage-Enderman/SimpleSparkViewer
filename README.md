@@ -26,3 +26,6 @@ https://killiancartelier.fr/splatviewer/
 
 ## Credits
 This project is based on [Spark](https://github.com/sparkjsdev/spark) by sparkjsdev, used under the MIT License.
+
+This model is published under a CC-BY license. That means it can be used in any project (personal or commercial) so long as the text below is included. [Learn more](https://poly.pizza/license)
+VR Headset by jeremy [CC-BY] via Poly Pizza

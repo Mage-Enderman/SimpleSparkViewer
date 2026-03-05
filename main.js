@@ -2,19 +2,100 @@ import * as THREE from 'three';
 import { SparkRenderer, SparkXr, SparkControls } from '@sparkjsdev/spark';
 import { loadSplat } from './SplatLoader.js';
 import { VRButton } from 'three/examples/jsm/webxr/VRButton.js'; // Import VRButton from three.js
+import { MultiplayerManager } from './MultiplayerManager.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 let scene, camera, renderer, spark, controls, localFrame;
+let multiplayer;
 let xr = null;
 let currentMesh = null;
 let currentFileUrl = null;
 let currentExtension = null;
 let currentFileName = null;
 let savedOrbitDistance = 3.0;
+let localLeftHand, localRightHand;
+
+
+// Global model data for sharing
+let currentModelBlob = null;
+let expectedModelSize = 0;
+let currentBytesReceived = 0;
 
 // FPS tracking variables
 let lastFpsTime = performance.now();
 let framesThisSecond = 0;
 let fpsCounterEl = null;
+
+// --- P2P Global Fetch Interceptor ---
+if (!window._originalFetch) {
+    window._originalFetch = window.fetch;
+    window.fetch = async (input, init) => {
+        const url = typeof input === 'string' ? input : input.url;
+        const isP2P = url.includes('://p2p/') || url.startsWith('p2p://');
+
+        let rangeHeader = null;
+        if (init?.headers) {
+            if (init.headers instanceof Headers) {
+                rangeHeader = init.headers.get('Range') || init.headers.get('range');
+            } else {
+                rangeHeader = init.headers.Range || init.headers.range;
+            }
+        } else if (input instanceof Request) {
+            rangeHeader = input.headers.get('Range') || input.headers.get('range');
+        }
+
+        if (isP2P && rangeHeader) {
+            const match = rangeHeader.match(/bytes=(\d+)-(\d+)/);
+            if (match) {
+                const start = parseInt(match[1]);
+                const end = parseInt(match[2]); // inclusive
+
+                return new Promise((resolve) => {
+                    let timeout = null;
+                    const onData = (e) => {
+                        if (e.detail.range.start === start && e.detail.range.end === end) {
+                            clearTimeout(timeout);
+                            currentBytesReceived += e.detail.data.byteLength;
+
+                            // Update progress
+                            if (expectedModelSize > 0) {
+                                const progress = Math.min(100, (currentBytesReceived / expectedModelSize) * 100);
+                                const progressContainer = document.getElementById('p2p-progress-container');
+                                if (progressContainer) progressContainer.style.display = 'block';
+                                const progressBar = document.getElementById('p2p-progress-bar');
+                                if (progressBar) progressBar.style.width = `${progress}%`;
+                            }
+
+                            console.log(`P2P Fetch: Received range ${start}-${end}`);
+                            window.removeEventListener('peer-model-data', onData);
+                            resolve(new Response(e.detail.data));
+                        }
+                    };
+                    window.addEventListener('peer-model-data', onData);
+
+                    const hostPeerId = multiplayer && multiplayer.roomId ? multiplayer.roomId : null;
+                    const conn = (hostPeerId && multiplayer) ? multiplayer.connections.get(hostPeerId) : null;
+                    if (conn) {
+                        conn.send({
+                            type: 'MODEL_DATA_REQ',
+                            payload: { start, end }
+                        });
+                    } else {
+                        window.removeEventListener('peer-model-data', onData);
+                        resolve(window._originalFetch(input, init));
+                    }
+
+                    timeout = setTimeout(() => {
+                        window.removeEventListener('peer-model-data', onData);
+                        resolve(window._originalFetch(input, init));
+                    }, 15000);
+                });
+            }
+        }
+        return window._originalFetch(input, init);
+    };
+}
+
 
 // VR Scaling variables
 let xrGripCount = 0;
@@ -22,6 +103,9 @@ let xrScaleActive = false;
 let xrInitialDist = 0;
 let xrInitialScale = 1;
 let controller0, controller1;
+let lastXPressed = false;
+let lastYPressed = false;
+
 
 async function init() {
     // 1. Core Architecture (Three.js Integration)
@@ -38,6 +122,13 @@ async function init() {
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.xr.enabled = true; // Enable XR
     document.body.appendChild(renderer.domElement);
+
+    // Add Scene Lighting for avatars
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+    scene.add(ambientLight);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+    directionalLight.position.set(1, 1, 1);
+    scene.add(directionalLight);
 
     // VR Controllers Setup
     controller0 = renderer.xr.getController(0);
@@ -66,14 +157,143 @@ async function init() {
     controller1.addEventListener('squeezestart', onSqueezeStart);
     controller1.addEventListener('squeezeend', onSqueezeEnd);
 
-    scene.add(controller0);
-    scene.add(controller1);
+    // Add visual meshes to local controllers (so the user can see their own hands)
+    const handGeo = new THREE.BoxGeometry(0.05, 0.02, 0.1);
+    const handMat = new THREE.MeshStandardMaterial({ color: 0x888888 });
+    localLeftHand = new THREE.Mesh(handGeo, handMat);
+    localRightHand = new THREE.Mesh(handGeo, handMat);
+    controller0.add(localLeftHand);
+    controller1.add(localRightHand);
+
+    // Initially hidden
+    localLeftHand.visible = false;
+    localRightHand.visible = false;
+
+    // Add controllers to localFrame so they move with the player space
+    localFrame.add(controller0);
+    localFrame.add(controller1);
 
     spark = new SparkRenderer({
         renderer,
         lodSplatScale: 1.0, // Default LOD budget
     });
     scene.add(spark);
+
+    // Multiplayer Initialization
+    const roomFromHash = window.location.hash.substring(1);
+    multiplayer = new MultiplayerManager(
+        scene,
+        onPeerModelAnnounced,
+        onPeerRangeRequest
+    );
+
+    const mpToggleBtn = document.getElementById('multiplayer-toggle-btn');
+    const mpPanel = document.getElementById('multiplayer-panel');
+    const mpSetup = document.getElementById('mp-setup-section');
+    const mpActive = document.getElementById('mp-active-section');
+    const mpJoinIdInput = document.getElementById('mp-join-id');
+    const mpStatus = document.getElementById('mp-status');
+
+    mpToggleBtn.onclick = () => {
+        mpPanel.style.display = mpPanel.style.display === 'none' ? 'block' : 'none';
+        mpToggleBtn.style.background = mpPanel.style.display === 'none' ? 'rgba(100,100,255,0.4)' : 'rgba(255,100,100,0.4)';
+    };
+
+    if (roomFromHash) {
+        mpJoinIdInput.value = roomFromHash;
+        setTimeout(() => {
+            mpPanel.style.display = 'block';
+            mpToggleBtn.style.background = 'rgba(255,100,100,0.4)';
+            mpStatus.innerText = "Connecting (Smart)...";
+            multiplayer.smartInit(roomFromHash).then(onConnected).catch(err => {
+                mpStatus.innerText = "Connection Error";
+            });
+        }, 500);
+    }
+
+    const onConnected = () => {
+        mpSetup.style.display = 'none';
+        mpActive.style.display = 'block';
+        mpStatus.innerText = "Connected";
+        document.getElementById('mp-role').innerText = multiplayer.isHost ? "Host" : "Client";
+        document.getElementById('room-id').innerText = multiplayer.roomId;
+        document.getElementById('player-count').innerText = "1";
+    };
+
+    document.getElementById('mp-host-btn').onclick = () => {
+        mpStatus.innerText = "Hosting...";
+        multiplayer.host().then(onConnected).catch(err => {
+            mpStatus.innerText = "Host Error";
+        });
+    };
+
+    document.getElementById('mp-join-btn').onclick = () => {
+        const joinId = mpJoinIdInput.value.trim();
+        if (!joinId) return;
+        mpStatus.innerText = "Joining...";
+        multiplayer.join(joinId).then(onConnected).catch(err => {
+            mpStatus.innerText = "Join Error";
+        });
+    };
+
+    // GLTF Head loader for remote avatars
+    const gltfLoader = new GLTFLoader();
+    gltfLoader.load('VRHeadset.glb', (gltf) => {
+        const headMesh = gltf.scene;
+        headMesh.scale.set(0.05, 0.05, 0.05); // Half size (from 0.1)
+
+        // Force solid grey material
+        const greyMat = new THREE.MeshStandardMaterial({ color: 0x888888 });
+        headMesh.traverse((node) => {
+            if (node.isMesh) node.material = greyMat;
+        });
+
+        multiplayer.remoteHeadModel = headMesh;
+    });
+
+    document.getElementById('copy-room-btn').onclick = () => {
+        const url = new URL(window.location.href);
+        url.hash = multiplayer.roomId;
+        navigator.clipboard.writeText(url.toString());
+        const btn = document.getElementById('copy-room-btn');
+        const oldText = btn.innerText;
+        btn.innerText = "Copied Room Link!";
+        setTimeout(() => btn.innerText = oldText, 2000);
+    };
+
+    multiplayer.broadcastModelInfo = (specificConn = null) => {
+        if (!currentMesh || !currentFileName) return;
+
+        // Estimate size if blob is missing
+        let size = 0;
+        if (currentModelBlob) {
+            size = currentModelBlob.size;
+        } else if (currentMesh.packedSplats && currentMesh.packedSplats.packedArray) {
+            size = currentMesh.packedSplats.packedArray.byteLength;
+        } else if (currentMesh.extSplats && currentMesh.extSplats.packedArray) {
+            size = currentMesh.extSplats.packedArray.byteLength;
+        } else if (currentMesh.splats && typeof currentMesh.splats.getNumSplats === 'function') {
+            size = currentMesh.splats.getNumSplats() * 32; // Estimate
+        }
+
+        const isExternalUrl = currentFileUrl && (currentFileUrl.startsWith('http') && !currentFileUrl.includes('://p2p/'));
+
+        const msg = {
+            type: 'MODEL_ANNOUNCE',
+            payload: {
+                name: currentFileName,
+                extension: currentExtension,
+                size: size,
+                isRad: currentFileName.toLowerCase().endsWith('.rad'),
+                url: isExternalUrl ? currentFileUrl : null
+            }
+        };
+        if (specificConn) {
+            specificConn.send(msg);
+        } else {
+            multiplayer.broadcast(msg);
+        }
+    };
 
     // 3. WebXR Integration
     xr = new SparkXr({
@@ -126,8 +346,18 @@ async function init() {
         delete controls.fpsMovement.keycodeMoveMapping.KeyF;
     }
 
-    function loadSplatFromUrl(generateLod) {
-        if (!currentFileUrl) return;
+
+    async function loadSplatFromUrl(generateLod, blob = null) {
+        // Robust peer check: we are in a room, not host
+        const isPeerModel = !blob && !!multiplayer.roomId && !multiplayer.isHost && (currentFileUrl && currentFileUrl.includes('://p2p/'));
+        if (!currentFileUrl && !blob && !isPeerModel) return;
+
+        // Reset progress
+        currentBytesReceived = 0;
+        const progressBar = document.getElementById('p2p-progress-bar');
+        if (progressBar) progressBar.style.width = '0%';
+        const progressContainer = document.getElementById('p2p-progress-container');
+        if (progressContainer) progressContainer.style.display = 'none';
 
         document.getElementById('status').innerText = `Status: Loading ${currentFileName}...`;
 
@@ -142,18 +372,170 @@ async function init() {
             currentMesh.dispose();
         }
 
-        const isRad = currentFileName.toLowerCase().endsWith('.rad') || currentFileUrl.toLowerCase().includes('.rad');
-        currentMesh = loadSplat(scene, currentFileUrl, isRad, currentExtension, currentFileName, generateLod);
+        const isRad = currentFileName.toLowerCase().endsWith('.rad') || (currentFileUrl && currentFileUrl.toLowerCase().includes('.rad'));
+
+        let urlToLoad = currentFileUrl;
+        if (blob) {
+            urlToLoad = URL.createObjectURL(blob);
+        }
+
+        // For non-RAD models, fetch the whole thing via P2P chunks first to show progress
+        if (!isRad && isPeerModel && expectedModelSize > 0) {
+            document.getElementById('status').innerText = `Status: Requesting model from host...`;
+            document.getElementById('p2p-progress-container').style.display = 'block';
+
+            const chunks = [];
+            let offset = 0;
+            const chunkSize = 131072; // 128kb chunks
+
+            while (offset < expectedModelSize) {
+                const end = Math.min(offset + chunkSize, expectedModelSize);
+                const chunk = await requestP2PChunk(offset, end);
+                if (chunk) {
+                    chunks.push(chunk);
+                    offset = end;
+                } else {
+                    console.error("P2P: Failed to get chunk, falling back");
+                    break;
+                }
+            }
+
+            if (offset >= expectedModelSize) {
+                const fullBlob = new Blob(chunks);
+                urlToLoad = URL.createObjectURL(fullBlob);
+            }
+        }
+
+        function requestP2PChunk(start, end) {
+            return new Promise((resolve) => {
+                const onData = (e) => {
+                    // For chunks, 'end' is exclusive (like slice length)
+                    if (e.detail.range.start === start && e.detail.range.end === end) {
+                        currentBytesReceived += e.detail.data.byteLength;
+                        const progress = Math.min(100, (currentBytesReceived / expectedModelSize) * 100);
+                        document.getElementById('p2p-progress-bar').style.width = `${progress}%`;
+
+                        window.removeEventListener('peer-model-data', onData);
+                        resolve(e.detail.data);
+                    }
+                };
+                window.addEventListener('peer-model-data', onData);
+
+                const hostPeerId = multiplayer.roomId;
+                const conn = hostPeerId ? multiplayer.connections.get(hostPeerId) : null;
+                if (conn) {
+                    console.log(`P2P: Requesting chunk ${start}-${end} (Size: ${end - start})`);
+                    conn.send({
+                        type: 'MODEL_CHUNK_REQ',
+                        payload: { start, end } // Exclusive end for chunks
+                    });
+                } else {
+                    console.warn("P2P: No host connection for chunk request");
+                    resolve(null);
+                }
+
+                setTimeout(() => {
+                    window.removeEventListener('peer-model-data', onData);
+                    resolve(null);
+                }, 10000);
+            });
+        }
+
+        currentMesh = loadSplat(scene, urlToLoad, isRad, currentExtension, currentFileName, generateLod);
 
         currentMesh.initialized.then(() => {
             document.getElementById('status').innerText = `Status: Loaded ${currentFileName}`;
+            document.getElementById('p2p-progress-container').style.display = 'none';
+            document.getElementById('p2p-progress-bar').style.width = '0%';
+            currentBytesReceived = 0;
+
             currentMesh.scale.set(oldScale, oldScale, oldScale);
             currentMesh.rotation.z = oldRotZ;
             currentMesh.lodScale = oldLodScale;
+
+            if (multiplayer.isHost) {
+                multiplayer.broadcastModelInfo();
+            }
         }).catch((err) => {
+            window.fetch = originalFetch;
+            document.getElementById('p2p-progress-container').style.display = 'none';
             console.error(err);
             document.getElementById('status').innerText = `Status: Error loading ${currentFileName}`;
         });
+    }
+
+    function onPeerModelAnnounced(peerId, info) {
+        if (multiplayer.isHost) return; // Host ignores announcements
+
+        // Check if we already have this model loaded or loading from URL parameter
+        // This prevents the "infinite reload loop" when both have same URL
+        if (currentFileName === info.name && currentMesh) {
+            console.log("Announcement matches current local load. Skipping redundant reload.");
+            return;
+        }
+
+        currentFileName = info.name;
+        currentExtension = info.extension;
+        expectedModelSize = info.size || 0;
+        currentBytesReceived = 0;
+
+        // Prefer direct URL if host provides a public one, otherwise use P2P proxy
+        if (info.url) {
+            console.log("Peer shared direct URL:", info.url);
+            currentFileUrl = info.url;
+            document.getElementById('status').innerText = `Status: Peer sharing ${info.name} (Direct URL)...`;
+        } else {
+            // Virtual P2P URL to trigger the interceptor
+            currentFileUrl = "http://p2p/" + info.name;
+            if (info.isRad) {
+                document.getElementById('status').innerText = `Status: Peer sharing ${info.name} (P2P Paged)...`;
+            } else {
+                console.log("Remote model announced:", info.name);
+                document.getElementById('status').innerText = `Status: Peer sharing ${info.name} (P2P)...`;
+            }
+        }
+
+        // Auto-load the shared model
+        loadSplatFromUrl(document.getElementById('lod-mesh-cb').checked);
+    }
+
+    async function onPeerRangeRequest(peerId, type, range) {
+        let chunkData = null;
+
+        // Determine slice points based on request type
+        // MODEL_DATA_REQ (from fetch) uses inclusive end
+        // MODEL_CHUNK_REQ (from loop) uses exclusive end
+        const isInclusive = (type === 'MODEL_DATA_REQ');
+        const start = range.start;
+        const end = isInclusive ? range.end + 1 : range.end;
+
+        if (currentModelBlob) {
+            const slice = currentModelBlob.slice(start, end);
+            chunkData = await slice.arrayBuffer();
+        } else if (currentFileUrl && !currentFileUrl.includes('://p2p/')) {
+            // Host fallback: Fetch from original URL
+            try {
+                const response = await window._originalFetch(currentFileUrl, {
+                    headers: { 'Range': `bytes=${start}-${end - 1}` }
+                });
+                if (response.ok) chunkData = await response.arrayBuffer();
+            } catch (e) {
+                console.error("Host: Failed to proxy range request", e);
+            }
+        }
+
+        if (chunkData) {
+            const conn = multiplayer.connections.get(peerId);
+            if (conn) {
+                conn.send({
+                    type: isInclusive ? 'MODEL_DATA_CHUNK' : 'MODEL_CHUNK',
+                    payload: {
+                        range: range, // Send back original range for matching
+                        data: chunkData
+                    }
+                });
+            }
+        }
     }
 
     // UI Hooks
@@ -164,6 +546,7 @@ async function init() {
         if (file) {
             if (currentFileUrl) URL.revokeObjectURL(currentFileUrl);
             currentFileUrl = URL.createObjectURL(file);
+            currentModelBlob = file;
             currentExtension = file.name.split('.').pop();
             currentFileName = file.name;
             const generateLod = document.getElementById('lod-mesh-cb').checked;
@@ -189,6 +572,7 @@ async function init() {
             if (validExtensions.includes(extension)) {
                 if (currentFileUrl) URL.revokeObjectURL(currentFileUrl);
                 currentFileUrl = URL.createObjectURL(file);
+                currentModelBlob = file;
                 currentExtension = extension;
                 currentFileName = file.name;
                 const generateLod = document.getElementById('lod-mesh-cb').checked;
@@ -233,12 +617,9 @@ async function init() {
         }
     });
 
+
     document.getElementById('global-lod-slider').addEventListener('input', (e) => {
-        const val = parseFloat(e.target.value);
-        document.getElementById('global-lod-value').innerText = val.toFixed(1);
-        if (spark) {
-            spark.lodSplatScale = val;
-        }
+        setGlobalLod(parseFloat(e.target.value));
     });
 
     document.getElementById('mesh-lod-slider').addEventListener('input', (e) => {
@@ -271,6 +652,27 @@ async function init() {
 
     document.getElementById('orbit-slider').addEventListener('input', (e) => {
         setOrbitDistance(parseFloat(e.target.value));
+    });
+
+    // Reset Camera Functionality
+    document.getElementById('reset-camera-btn').addEventListener('click', () => {
+        // Reset local frame (which holds camera and controllers) position/rotation
+        localFrame.position.set(0, 0, 0);
+        localFrame.rotation.set(0, 0, 0);
+
+        // Reset camera position back to default
+        const isFps = document.getElementById('fps-mode-cb').checked;
+        camera.position.set(0, 0, isFps ? 0 : savedOrbitDistance);
+        camera.rotation.set(0, 0, 0);
+
+        if (!isFps) {
+            setOrbitDistance(savedOrbitDistance);
+        }
+
+        // Reset controls state if possible
+        if (controls && controls.pointerControls) {
+            controls.pointerControls.reset();
+        }
     });
 
     // Use mouse wheel to dynamically adjust orbit distance based on current offset
@@ -362,7 +764,39 @@ function animate() {
 
         // VR Scaling Logic
         let xrIsPresenting = renderer.xr.isPresenting;
+        const session = renderer.xr.getSession();
 
+        // Update local hand visibility
+        if (localLeftHand) localLeftHand.visible = xrIsPresenting;
+        if (localRightHand) localRightHand.visible = xrIsPresenting;
+
+        // Reset rotation and initial position once when entering VR
+        if (xrIsPresenting && !renderer.xr.isPresentingLastFrame) {
+            localFrame.rotation.set(0, 0, 0);
+            // Often good to reset position as well when entering VR so they start centered
+            localFrame.position.set(0, 0, 0);
+        }
+        renderer.xr.isPresentingLastFrame = xrIsPresenting;
+
+        if (xrIsPresenting && session) {
+            for (const source of session.inputSources) {
+                if (source.handedness === 'left' && source.gamepad) {
+                    const buttons = source.gamepad.buttons;
+                    // X button is index 4, Y button is index 5
+                    const xPressed = buttons[4]?.pressed || false;
+                    const yPressed = buttons[5]?.pressed || false;
+
+                    if (xPressed && !lastXPressed) {
+                        setGlobalLod(spark.lodSplatScale - 0.1);
+                    }
+                    if (yPressed && !lastYPressed) {
+                        setGlobalLod(spark.lodSplatScale + 0.1);
+                    }
+                    lastXPressed = xPressed;
+                    lastYPressed = yPressed;
+                }
+            }
+        }
         if (xrIsPresenting && currentMesh && xrScaleActive) {
             const currentDist = controller0.position.distanceTo(controller1.position);
             const scaleFactor = currentDist / xrInitialDist;
@@ -386,6 +820,16 @@ function animate() {
             xr.updateControllers(camera);
         }
 
+        if (multiplayer && multiplayer.peer) {
+            const currentScale = currentMesh ? currentMesh.scale.x : 1.0;
+            multiplayer.currentModelScale = currentScale; // Make scale available for incoming data
+            multiplayer.updateLocalState(camera, controller0, controller1, renderer.xr.isPresenting, currentScale);
+
+            const count = multiplayer.connections.size + 1;
+            const el = document.getElementById('player-count');
+            if (el) el.innerText = count;
+        }
+
         // Update Splat Count
         if (spark && document.getElementById('splat-count-value')) {
             const renderedCount = spark.activeSplats || 0;
@@ -402,6 +846,17 @@ function animate() {
         // SparkViewpoint and sorting are handled internally by SparkRenderer
         renderer.render(scene, camera);
     });
+}
+
+function setGlobalLod(val) {
+    val = Math.max(0.1, Math.min(5.0, val));
+    const slider = document.getElementById('global-lod-slider');
+    const display = document.getElementById('global-lod-value');
+    if (slider) slider.value = val;
+    if (display) display.innerText = val.toFixed(1);
+    if (spark) {
+        spark.lodSplatScale = val;
+    }
 }
 
 function detectMobile() {
