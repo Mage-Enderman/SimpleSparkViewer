@@ -21,6 +21,7 @@ jobs:
           npm install
           git apply spark_changes_utf8.diff
           npm run build
+          cp VRHeadset.glb dist/
 
       - name: Deploy
         uses: JamesIves/github-pages-deploy-action@v4
