@@ -26,6 +26,35 @@
             display: flex;
             flex-direction: column;
             gap: 10px;
+            max-height: calc(100vh - 40px);
+            max-width: calc(100vw - 40px);
+            pointer-events: none;
+        }
+
+        /* Allow child interactive elements pointer events */
+        #ui-container>* {
+            pointer-events: auto;
+        }
+
+        #ui-content-wrapper {
+            overflow-y: auto;
+            flex-shrink: 1;
+            min-height: 0;
+            padding-right: 5px;
+        }
+
+        #ui-content-wrapper::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #ui-content-wrapper::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+        }
+
+        #ui-content-wrapper::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
         }
 
         .btn {
@@ -59,7 +88,7 @@
         }
     }
     </script>
-  <script type="module" crossorigin src="/SimpleSparkViewer/index.js"></script>
+  <script type="module" crossorigin src="./main.js"></script>
 </head>
 
 <body>
@@ -75,9 +104,63 @@
 
         <div id="ui-content-wrapper">
             <h2 style="margin-top: 0; margin-bottom: 15px; font-size: 1.4em;">SparkJS 2 Viewer</h2>
+
+            <!-- Multiplayer Button -->
+            <button class="btn" id="multiplayer-toggle-btn"
+                style="width: 100%; margin-bottom: 10px; background: rgba(100,100,255,0.4);">👥 Multiplayer</button>
+
+            <div id="multiplayer-panel"
+                style="display: none; background: rgba(0,0,100,0.6); padding: 15px; border-radius: 8px; margin-bottom: 10px; border: 1px solid rgba(100,150,255,0.4); backdrop-filter: blur(5px);">
+                <div style="font-weight: bold; margin-bottom: 10px; color: #fff; font-size: 1.0em; text-align: center;">
+                    Multiplayer Menu</div>
+
+                <!-- Setup Phase -->
+                <div id="mp-setup-section">
+                    <button class="btn" id="mp-host-btn"
+                        style="width: 100%; margin-bottom: 10px; background: #228844;">Host Room</button>
+
+                    <div style="margin: 10px 0; display: flex; gap: 5px;">
+                        <input type="text" id="mp-join-id" placeholder="Room ID..."
+                            style="flex: 1; padding: 5px; border-radius: 4px; border: none; background: rgba(255,255,255,0.1); color: white;">
+                        <button class="btn" id="mp-join-btn"
+                            style="padding: 5px 15px; background: #224488;">Join</button>
+                    </div>
+                </div>
+
+                <!-- Active Phase -->
+                <div id="mp-active-section" style="display: none;">
+                    <div id="room-info"
+                        style="font-size: 0.9em; margin-bottom: 10px; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 4px;">
+                        Status: <span id="mp-status" style="color: #00ffaa;">Connecting...</span><br>
+                        Role: <span id="mp-role" style="color: #00ffaa; font-weight: bold;">---</span><br>
+                        Room ID: <span id="room-id" style="font-family: monospace; color: #00ffaa;">---</span>
+                    </div>
+
+                    <button class="btn" id="copy-room-btn"
+                        style="width: 100%; margin-bottom: 10px; background: rgba(255,255,255,0.1); font-size: 0.8em;">Copy
+                        Invite Link</button>
+                    <div style="font-size: 0.8em; color: #aaa;">Players: <span id="player-count">1</span></div>
+                </div>
+            </div>
+
             <input type="file" id="file-input" accept=".spz,.rad,.ply,.sog" style="display: none;">
-            <button class="btn" id="load-btn">Load Splat (.spz / .rad / .ply / .sog)</button>
-            <div id="status">Status: Initializing...</div>
+            <button class="btn" id="load-btn" style="width: 100%;">Load Splat (.spz / .rad / .ply / .sog)</button>
+
+            <!-- Global P2P Progress Bar -->
+            <div id="p2p-progress-container"
+                style="display: none; margin-top: 10px; padding: 10px; background: rgba(0,100,255,0.1); border-radius: 6px; border: 1px solid rgba(0,170,255,0.3); box-shadow: 0 0 10px rgba(0,170,255,0.2);">
+                <div
+                    style="font-size: 0.8em; color: #00bfff; margin-bottom: 6px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">
+                    Receiving P2P Model...</div>
+                <div
+                    style="width: 100%; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden;">
+                    <div id="p2p-progress-bar"
+                        style="width: 0%; height: 100%; background: linear-gradient(90deg, #0088ff, #00eaff); box-shadow: 0 0 10px #00aaff; transition: width 0.2s;">
+                    </div>
+                </div>
+            </div>
+
+            <div id="status" style="margin-top: 10px; font-size: 0.9em;">Status: Initializing...</div>
 
             <div id="controls-panel"
                 style="background: rgba(0,0,0,0.5); padding: 15px; border-radius: 8px; margin-top: 10px; border: 1px solid rgba(255, 255, 255, 0.2);">
@@ -122,6 +205,8 @@
                     <input type="range" id="orbit-slider" min="0" max="20" step="0.1" value="3"
                         style="width: 100%; cursor: pointer;">
                 </div>
+                <button class="btn" id="reset-camera-btn"
+                    style="width: 100%; margin-top: 15px; background: rgba(255,100,100,0.3);">Reset Camera</button>
                 <div style="margin-top: 10px; font-size: 0.85em; color: #ccc;">
                     <b>Keys:</b> WASD (Move) | E/Q (Up/Down) | R/F (Tilt Camera)
                 </div>
@@ -129,11 +214,18 @@
                     style="margin-top: 10px; font-size: 0.85em; color: #00ffaa; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px;">
                     Rendered Splats: <span id="splat-count-value">0</span>
                 </div>
+
+                <!-- Credits Section -->
+                <div
+                    style="margin-top: 15px; font-size: 0.7em; color: #888; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 8px;">
+                    VR Headset by jeremy [CC-BY] via Poly Pizza
+                </div>
             </div>
         </div>
     </div>
     <div id="vr-button-container"></div>
 
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 
 </body>
 
